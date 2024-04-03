@@ -40,7 +40,7 @@ def json_data():
     df2 = pd.DataFrame(data2).iloc[:1].apply(pd.to_numeric, errors='coerce')
     st.write('BG')
     st.write(df1)
-    st.write('Specctral')
+    st.write('Spectral')
     st.write(df2)
     wavelengths = df1.columns
 
