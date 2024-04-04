@@ -222,6 +222,13 @@ def main():
     ]
 
     # Loop through each model
+    st.markdown("""
+    <style>
+    .custom-font {font-size: 16px; font-weight: bold;}
+    </style> """, unsafe_allow_html=True)
+    
+    st.markdown('<p class="custom-font">Model SNV & BR :</p>', unsafe_allow_html=True)
+    
     for label, model_path in model_paths_with_labels:
         model = load_model(model_path)
         
@@ -233,8 +240,7 @@ def main():
             predictions_value = predictions[0][0]  # Assuming each prediction returns a single value
 
             # Print the preprocessing label and prediction
-            st.write('SNV & BR')
-            st.markdown(f"{preprocess_label} | {label}<span style='color: blue;'> - Hb: {predictions_value:.1f} g/dL", unsafe_allow_html=True)
+            st.markdown(f"PP: {preprocess_label} | {label}<span style='color: blue;'> - <strong>Hb:</strong> {predictions_value:.1f} g/dL", unsafe_allow_html=True)
     
 
     # # Assuming json_data returns a tuple of all dataframes + wavelengths at the end
