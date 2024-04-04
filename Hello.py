@@ -4,6 +4,10 @@ import requests
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import numpy as np
+from sklearn.base import TransformerMixin, BaseEstimator
+from sklearn.preprocessing import Normalizer
+from sklearn.utils.validation import FLOAT_DTYPES
+from scipy import sparse
 
 # st.markdown("""
 # <style>
@@ -12,9 +16,38 @@ import numpy as np
 
 # st.markdown('<p class="custom-font">Absorbance data :</p>', unsafe_allow_html=True)
 
+
+# Custom Baseline Removal Transformer
+class BaselineRemover(TransformerMixin, BaseEstimator):
+    def _init_(self, *, copy=True):
+        self.copy = copy
+
+    def fit(self, X, y=None):
+        if sparse.issparse(X):
+            raise ValueError('Sparse matrices not supported!')
+        return self
+
+    def transform(self, X, copy=None):
+        copy = copy if copy is not None else self.copy
+        X = self._validate_data(X, reset=True, accept_sparse='csr', copy=copy, estimator=self, dtype=FLOAT_DTYPES, force_all_finite='allow-nan')
+        X = self.remove_baseline(X.T).T
+        return X
+
+    def remove_baseline(self, spectra):
+        return spectra - spectra.mean(axis=0)
+
+    def _more_tags(self):
+        return {'allow_nan': True}
+
+def snv(input_data):
+    # Mean centering and scaling by standard deviation for each spectrum
+    mean_corrected = input_data - np.mean(input_data, axis=1, keepdims=True)
+    snv_transformed = mean_corrected / np.std(mean_corrected, axis=1, keepdims=True)
+    return snv_transformed
+        
 def json_data():
     # First API call
-    api_url1 = "https://x8ki-letl-twmt.n7.xano.io/api:U4wk_Gn6/BackgroundReading"
+    api_url1 = "https://x8ki-letl-twmt.n7.xano.io/api:3Ws6ADLi/bgdata"
     payload1 = {}
     response1 = requests.get(api_url1, params=payload1)
 
@@ -25,7 +58,7 @@ def json_data():
         return None
 
     # Second API call
-    api_url2 = "https://x8ki-letl-twmt.n7.xano.io/api:DKaWNKM4/spectral_data"
+    api_url2 = "https://x8ki-letl-twmt.n7.xano.io/api:Qc5crfn2/spectraldata"
     payload2 = {}
     response2 = requests.get(api_url2, params=payload2)
 
@@ -38,24 +71,66 @@ def json_data():
     # Extract first line of data from both API responses and convert to numeric
     df1 = pd.DataFrame(data1).iloc[:1].apply(pd.to_numeric, errors='coerce')
     df2 = pd.DataFrame(data2).iloc[:1].apply(pd.to_numeric, errors='coerce')
-    st.write('BG')
+    wavelengths = df1.columns
+    st.write('Background')
     st.write(df1)
     st.write('Spectral')
     st.write(df2)
-    wavelengths = df1.columns
 
     # Element-wise division of the dataframes & convert absorbance data to csv
     absorbance_df = df1.div(df2.values).pow(2)
-    st.write('Absorbance')
+    st.write('Original absorbance')
     st.write(absorbance_df)
 
-    # Convert DataFrame to CSV
-    absorbance_df.to_csv('absorbance_data.csv', index=False)
-    
+    # Apply SNV to the absorbance data
+    absorbance_snv = snv(absorbance_df.values)
+    absorbance_snv_df = pd.DataFrame(absorbance_snv, columns=absorbance_df.columns)
+    st.write('SNV Transformation')
+    st.write(absorbance_snv_df)
+
+    # Apply baseline removal to the absorbance data
+    baseline_remover = BaselineRemover()
+    absorbance_baseline_removed = baseline_remover.transform(absorbance_df)
+    absorbance_baseline_removed_df = pd.DataFrame(absorbance_baseline_removed, columns=absorbance_df.columns)
+    absorbance_snv_baseline_removed = baseline_remover.transform(absorbance_snv)
+    absorbance_snv_baseline_removed_df = pd.DataFrame(absorbance_snv_baseline_removed, columns=absorbance_df.columns)
+    st.write('Baseline removal')
+    st.write(absorbance_baseline_removed_df)
+    st.write('SNV + baseline removal')
+    st.write(absorbance_snv_baseline_removed_df)
+
+    # Normalize the absorbance data using Euclidean normalization
+    normalizer_euc= Normalizer(norm='l2')  # Euclidean normalization
+    absorbance_normalized_euc = normalizer_euc.transform(absorbance_df)
+    absorbance_normalized_euc_df = pd.DataFrame(absorbance_normalized_euc, columns=absorbance_df.columns)
+    absorbance_snv_normalized_euc = normalizer_euc.transform(absorbance_snv)
+    absorbance_snv_normalized_euc_df = pd.DataFrame(absorbance_snv_normalized_euc, columns=absorbance_df.columns)
+    st.write('Euc')
+    st.write(absorbance_normalized_euc_df)
+    st.write('SNV + euc')
+    st.write(absorbance_snv_normalized_euc_df)
+
+    # # Convert normalized DataFrame to CSV (optional step, depending on your needs)
+    # absorbance_normalized_euc_df.to_csv('absorbance_data_normalized_euc.csv', index=False)
+
+    # Normalize the absorbance data using Manhattan normalization
+    normalizer_manh = Normalizer(norm='l1')  # Manhattan normalization
+    absorbance_normalized_manh = normalizer_manh.transform(absorbance_df)
+    absorbance_normalized_manh_df = pd.DataFrame(absorbance_normalized_manh, columns=absorbance_df.columns)
+    absorbance_snv_normalized_manh = normalizer_manh.transform(absorbance_snv)
+    absorbance_snv_normalized_manh_df = pd.DataFrame(absorbance_snv_normalized_manh, columns=absorbance_df.columns)
+    st.write('Manh absorbance')
+    st.write(absorbance_normalized_manh_df)
+    st.write('SNV + manh')
+    st.write(absorbance_snv_normalized_manh_df)
+
+
     # # First row of absorbance data
     # absorbance_data = absorbance_df.iloc[0]  
  
-    return absorbance_df, wavelengths
+    return absorbance_df, absorbance_normalized_euc_df, absorbance_snv_normalized_euc_df, absorbance_normalized_manh_df, absorbance_snv_normalized_manh_df, absorbance_baseline_removed_df, absorbance_snv_baseline_removed_df, absorbance_snv_df, wavelengths
+    # return absorbance_df, absorbance_snv_baseline_removed_df, wavelengths
+
 
 def load_model(model_dir):
     if model_dir.endswith('.tflite'):  # Check if model is a TensorFlow Lite model
@@ -68,24 +143,6 @@ def load_model(model_dir):
         model = tf.saved_model.load(model_dir)
         return model
 
-
-# def predict_with_model(model, input_data):
-#     if isinstance(model, tf.lite.Interpreter):  # Check if model is TensorFlow Lite Interpreter
-#         input_details = model.get_input_details()
-#         output_details = model.get_output_details()
-        
-#         # Assuming input_data is already in the correct shape and type
-#         model.set_tensor(input_details[0]['index'], input_data)
-#         model.invoke()
-#         predictions = model.get_tensor(output_details[0]['index'])
-#         return predictions  # This will be a numpy array
-#     else:
-#         # Existing prediction code for TensorFlow SavedModel
-#         input_array = input_data.to_numpy(dtype='float64')
-#         input_array_reshaped = input_array.reshape(-1, 19)  # Adjust to match the number of features your model expects
-#         input_tensor = tf.convert_to_tensor(input_array_reshaped, dtype=tf.float64)
-#         predictions = model(input_tensor)
-#         return predictions.numpy()  # Convert predictions to numpy array if needed
 
 def predict_with_model(model, input_data):
     if isinstance(model, tf.lite.Interpreter):  # Check if model is TensorFlow Lite Interpreter
@@ -107,79 +164,93 @@ def predict_with_model(model, input_data):
         input_tensor = tf.convert_to_tensor(input_array_reshaped, dtype=tf.float32)
         predictions = model(input_tensor)
         return predictions.numpy()  # Convert predictions to numpy array if needed
-    
+
 def main():
-    # Define model paths with labels
+
+    # model_paths_with_labels = [
+    #     ('Ori (R39)', 'reva-lablink-hb-125-(original-data).csv_r2_0.39_2024-02-15_11-55-27')
+    # ]
+
     model_paths_with_labels = [
-        ('SNV + br (R49)', 'snv_baseline_removed_pls_top_10_float32.parquet_best_model_2024-03-31_13-29-57'),
+        ('SNV + br (24-04-01)', 'snv_baseline_removed_pls_top_10_float32.parquet_best_model_2024-03-31_13-29-57'),
         ('TFLite', 'tflite_model_snv_br_10.tflite'),
         ('TFLite Q', 'tflite_model_snv_br_10_quant.tflite')
     ]
 
-    #     # Define model paths with labels
     # model_paths_with_labels = [
-    #     ('Ori (R39)', 'reva-lablink-hb-125-(original-data).csv_r2_0.39_2024-02-15_11-55-27')
-    # ]
-    
-    
-    # Get data from server (simulated here)
-    absorbance_df, wavelengths = json_data()
+    #     ('TF (SNV + br (24-04-03)', 'snv_baseline_removed_pls_top_10_float32.parquet_best_model_2024-04-03_04-18-56'),
+    #     ('TFLite', 'tflite_model_snv_br_10_2024-04-03_04-18-56.tflite'),
+    #     ('TFLite Q', 'tflite_model_snv_br_10_quant_2024-04-03_04-18-56.tflite')
+    # ]    
 
+    # model_paths_with_labels = [
+    #     ('TF (SNV + euc)', 'snv_normalized_euclidean_pls_top_10_float32.parquet_best_model_2024-03-30_02-03-57'),
+    #     ('TFLite', 'tflite_model_snv_euc_10_2024-03-30_02-03-57.tflite'),
+    #     ('TFLite Q', 'tflite_model_snv_euc_10_quant_2024-03-30_02-03-57.tflite')
+    # ]    
+
+    # model_paths_with_labels = [
+    #     ('TF (SNV + manh)', 'snv_normalized_manhattan_pls_top_10_float32.parquet_best_model_2024-04-01_08-57-51'),
+    #     ('TFLite', 'tflite_model_snv_manh_10_2024-04-01_08-57-51.tflite'),
+    #     ('TFLite Q', 'tflite_model_snv_manh_10_quant_2024-04-01_08-57-51.tflite')
+    # ]    
+
+        # Assuming json_data returns a tuple of all dataframes + wavelengths at the end
+    data = json_data()
+    if data is None:
+        st.write("Failed to fetch or process data.")
+        return
+
+    # Unpack all the DataFrames and wavelength from data
+    (absorbance_df, absorbance_normalized_euc_df, absorbance_snv_normalized_euc_df, 
+    absorbance_normalized_manh_df, absorbance_snv_normalized_manh_df, 
+    absorbance_baseline_removed_df, absorbance_snv_baseline_removed_df, 
+    absorbance_snv_df, wavelengths) = data
+    
+    # (absorbance_df, absorbance_snv_baseline_removed_df, wavelengths) = data
+
+    # Dictionary to hold DataFrame references and their labels for easy access
+    data_frames_with_labels = [
+        ("Ori", absorbance_df),
+        ("Euc", absorbance_normalized_euc_df),
+        ("SNV + Euc", absorbance_snv_normalized_euc_df),
+        ("Manh", absorbance_normalized_manh_df),
+        ("SNV + Manh", absorbance_snv_normalized_manh_df),
+        ("BR", absorbance_baseline_removed_df),
+        ("SNV + BR", absorbance_snv_baseline_removed_df),
+        ("SNV", absorbance_snv_df)
+    ]
+
+    # Loop through each model
     for label, model_path in model_paths_with_labels:
-
-        # Load the model
         model = load_model(model_path)
-        # st.write(model)
         
-        # Now process each row in df
-        for index, row in absorbance_df.iterrows():
-            predictions = predict_with_model(model, row)  # Assuming predict_with_model can handle a single row of DataFrame
+        # Loop through each preprocessing type
+        for preprocess_label, df in data_frames_with_labels:
+            # Making predictions for the first row as an example
+            row = df.iloc[0]  # Assuming we are making predictions on the first row
+            predictions = predict_with_model(model, row)
             predictions_value = predictions[0][0]  # Assuming each prediction returns a single value
 
-            # Display logic remains the same
-            if predictions_value > 25:
-                display_value = f'<span class="high-value">High value : ({predictions_value:.1f} g/dL)</span>'
-            else:
-                display_value = f'<span class="value">{predictions_value:.1f} g/dL</span>'
+            # Print the preprocessing label and prediction
+            st.markdown(f"{preprocess_label} | {label}<span style='color: blue;'> - Hb: {predictions_value:.1f} g/dL", unsafe_allow_html=True)
+    
 
-            st.markdown(f'<span class="label">Haemoglobin ({label}) - Sample {index+1}:</span><br>{display_value}</p>', unsafe_allow_html=True)
+    # # Assuming json_data returns a tuple of all dataframes + wavelengths at the end
+    # data_frames, wavelengths = json_data()[:-1], json_data()[-1]
 
     # for label, model_path in model_paths_with_labels:
-
-    #     # Load the model
     #     model = load_model(model_path)
-    #     # st.write(model)
         
-    #     # Predict
-    #     predictions = predict_with_model(model, absorbance_data)
-    #     predictions_value = predictions[0][0]
-    
-    #     st.markdown("""
-    #     <style>
-    #     .label {font-size: 16px; font-weight: bold; color: black;}
-    #     .value {font-size: 60px; font-weight: bold; color: blue;}
-    #     .high-value {font-size: 60px; font-weight: bold; color: red;}
-    #     </style> """, unsafe_allow_html=True)
-    
-    #     # Add condition for prediction value
-    #     if predictions_value > 25:
-    #         display_value = f'<span class="high-value">High value : ({predictions_value:.2f} g/dL)</span>'
-    #     else:
-    #         display_value = f'<span class="value">{predictions_value:.2f} g/dL</span>'
-        
-    #     # Display label and prediction value
-    #     st.markdown(f'<span class="label">Haemoglobin ({label}):</span><br>{display_value}</p>', unsafe_allow_html=True)
+    #     for df in data_frames:
+    #         for index, row in df.iterrows():
+    #             predictions = predict_with_model(model, row)
+    #             predictions_value = predictions[0][0]  # Adjust based on your model's output
+                
+    #             # Display logic
+    #             display_value = f"{predictions_value:.1f} g/dL"  # Example formatting
+    #             st.write(f"Haemoglobin ({label}) - Sample {index+1}: {display_value}")
 
-    # # Plotting
-    # plt.figure(figsize=(10, 4))
-    # plt.plot(wavelengths, absorbance_data.iloc[0], marker='o', linestyle='-', color='b')
-    # plt.xlabel('Wavelength (nm)', fontweight='bold', fontsize=14)
-    # plt.ylabel('Absorbance', fontweight='bold', fontsize=14)
-    # plt.xticks(rotation='vertical', fontweight='bold', fontsize=12)
-    # plt.yticks(fontweight='bold', fontsize=12)
-    # plt.tight_layout()
-    # plt.show()
-    # st.pyplot(plt)
     
-if __name__ == "__main__":
+if _name_ == "_main_":
     main()
