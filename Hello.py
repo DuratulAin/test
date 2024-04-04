@@ -252,5 +252,5 @@ def main():
     #             st.write(f"Haemoglobin ({label}) - Sample {index+1}: {display_value}")
 
     
-if _name_ == "_main_":
+if __name__ == "__main__":
     main()
