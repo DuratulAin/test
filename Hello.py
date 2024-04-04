@@ -9,6 +9,9 @@ from sklearn.preprocessing import Normalizer
 from sklearn.utils.validation import FLOAT_DTYPES
 from scipy import sparse
 
+# # Set page configuration to wide mode
+# st.set_page_config(layout="wide")
+
 # st.markdown("""
 # <style>
 # .custom-font {font-size: 16px; font-weight: bold;}
@@ -172,30 +175,22 @@ def main():
     # ]
 
     model_paths_with_labels = [
-        ('TF (24-04-01)', 'snv_baseline_removed_pls_top_10_float32.parquet_best_model_2024-03-31_13-29-57'),
-        ('TFLite', 'tflite_model_snv_br_10.tflite'),
-        ('TFLite Q', 'tflite_model_snv_br_10_quant.tflite')
+        ('TF (SNV + BR 24-04-01)', 'snv_baseline_removed_pls_top_10_float32.parquet_best_model_2024-03-31_13-29-57'),
+        ('TFL', 'tflite_model_snv_br_10.tflite'),
+        ('TFL Q', 'tflite_model_snv_br_10_quant.tflite'),
+        ('TF (SNV + BR 24-04-03)', 'snv_baseline_removed_pls_top_10_float32.parquet_best_model_2024-04-03_04-18-56'),
+        ('TFL', 'tflite_model_snv_br_10_2024-04-03_04-18-56.tflite'),
+        ('TFL Q', 'tflite_model_snv_br_10_quant_2024-04-03_04-18-56.tflite'),
+        ('TF (SNV + euc 24-04-03)', 'snv_normalized_euclidean_pls_top_10_float32.parquet_best_model_2024-03-30_02-03-57'),
+        ('TFL', 'tflite_model_snv_euc_10_2024-03-30_02-03-57.tflite'),
+        ('TFL Q', 'tflite_model_snv_euc_10_quant_2024-03-30_02-03-57.tflite'),
+        ('TF (SNV + manh 24-04-03)', 'snv_normalized_manhattan_pls_top_10_float32.parquet_best_model_2024-04-01_08-57-51'),
+        ('TFL', 'tflite_model_snv_manh_10_2024-04-01_08-57-51.tflite'),
+        ('TFL Q', 'tflite_model_snv_manh_10_quant_2024-04-01_08-57-51.tflite')
     ]
 
-    # model_paths_with_labels = [
-    #     ('TF (SNV + br (24-04-03)', 'snv_baseline_removed_pls_top_10_float32.parquet_best_model_2024-04-03_04-18-56'),
-    #     ('TFLite', 'tflite_model_snv_br_10_2024-04-03_04-18-56.tflite'),
-    #     ('TFLite Q', 'tflite_model_snv_br_10_quant_2024-04-03_04-18-56.tflite')
-    # ]    
 
-    # model_paths_with_labels = [
-    #     ('TF (SNV + euc)', 'snv_normalized_euclidean_pls_top_10_float32.parquet_best_model_2024-03-30_02-03-57'),
-    #     ('TFLite', 'tflite_model_snv_euc_10_2024-03-30_02-03-57.tflite'),
-    #     ('TFLite Q', 'tflite_model_snv_euc_10_quant_2024-03-30_02-03-57.tflite')
-    # ]    
-
-    # model_paths_with_labels = [
-    #     ('TF (SNV + manh)', 'snv_normalized_manhattan_pls_top_10_float32.parquet_best_model_2024-04-01_08-57-51'),
-    #     ('TFLite', 'tflite_model_snv_manh_10_2024-04-01_08-57-51.tflite'),
-    #     ('TFLite Q', 'tflite_model_snv_manh_10_quant_2024-04-01_08-57-51.tflite')
-    # ]    
-
-        # Assuming json_data returns a tuple of all dataframes + wavelengths at the end
+    # Assuming json_data returns a tuple of all dataframes + wavelengths at the end
     data = json_data()
     if data is None:
         st.write("Failed to fetch or process data.")
@@ -206,8 +201,6 @@ def main():
     absorbance_normalized_manh_df, absorbance_snv_normalized_manh_df, 
     absorbance_baseline_removed_df, absorbance_snv_baseline_removed_df, 
     absorbance_snv_df, wavelengths) = data
-    
-    # (absorbance_df, absorbance_snv_baseline_removed_df, wavelengths) = data
 
     # Dictionary to hold DataFrame references and their labels for easy access
     data_frames_with_labels = [
@@ -221,26 +214,63 @@ def main():
         ("SNV", absorbance_snv_df)
     ]
 
-    # Loop through each model
-    st.markdown("""
-    <style>
-    .custom-font {font-size: 16px; font-weight: bold;}
-    </style> """, unsafe_allow_html=True)
-    
-    st.markdown('<p class="custom-font">Model SNV & BR :</p>', unsafe_allow_html=True)
-    
+    results = []  # To accumulate prediction results
+
+    # Accumulate results in a list
     for label, model_path in model_paths_with_labels:
         model = load_model(model_path)
         
-        # Loop through each preprocessing type
         for preprocess_label, df in data_frames_with_labels:
-            # Making predictions for the first row as an example
-            row = df.iloc[0]  # Assuming we are making predictions on the first row
+            row = df.iloc[0]  # Assuming predictions on the first row
             predictions = predict_with_model(model, row)
-            predictions_value = predictions[0][0]  # Assuming each prediction returns a single value
+            predictions_value = predictions[0][0]  # Assuming single value predictions
 
-            # Print the preprocessing label and prediction
-            st.markdown(f"PP: {preprocess_label} | {label}<span style='color: blue;'> - <strong>Hb: {predictions_value:.1f} g/dL", unsafe_allow_html=True)
+            formatted_predictions_value = f"{predictions_value:.1f}"
+
+
+            # Append each prediction result to the results list
+            results.append({
+                "Model": label,
+                "Preprocessing": preprocess_label,
+                "Prediction (g/dL)": formatted_predictions_value
+            })
+
+    # Convert the results list to a DataFrame
+    results_df = pd.DataFrame(results)
+
+    st.markdown("""
+    <style>
+    /* This CSS selector targets the table elements in Streamlit */
+    .stTable, .stDataFrame {
+        font-size: 20px;  /* Increase font size */
+        padding: 20px;    /* Add more padding */
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Display the results as a table
+    st.dataframe(results_df, height=500, width=700)
+
+    # # Loop through each model
+    # for label, model_path in model_paths_with_labels:
+    #     model = load_model(model_path)
+    
+    # for i, (label, model_path) in enumerate(model_paths_with_labels, start=1):
+    #     # Dynamic section title with model label
+    #     st.markdown(f"### Model {i}: {label}")
+    #     st.markdown("---")  # Markdown for horizontal line
+        
+    #     model = load_model(model_path)
+        
+    #     # Loop through each preprocessing type
+    #     for preprocess_label, df in data_frames_with_labels:
+    #         # Making predictions for the first row as an example
+    #         row = df.iloc[0]  # Assuming we are making predictions on the first row
+    #         predictions = predict_with_model(model, row)
+    #         predictions_value = predictions[0][0]  # Assuming each prediction returns a single value
+
+    #         # Print the preprocessing label and prediction
+    #         st.markdown(f"PP: {preprocess_label} | {label}<span style='color: blue;'> - <strong>Hb: {predictions_value:.1f} g/dL", unsafe_allow_html=True)
     
 
     # # Assuming json_data returns a tuple of all dataframes + wavelengths at the end
