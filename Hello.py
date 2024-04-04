@@ -19,7 +19,7 @@ from scipy import sparse
 
 # Custom Baseline Removal Transformer
 class BaselineRemover(TransformerMixin, BaseEstimator):
-    def _init_(self, *, copy=True):
+    def __init__(self, *, copy=True):
         self.copy = copy
 
     def fit(self, X, y=None):
